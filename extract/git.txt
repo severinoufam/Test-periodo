@@ -1,0 +1,94 @@
+const axios = require('axios');
+
+// Busca todos os repositórios de uma organização usando seu token específico
+async function getRepos(org, token) {
+    let repos = [];
+    let page = 1;
+    const perPage = 100;
+    let hasMore = true;
+
+    while (hasMore) {
+        const url = `https://api.github.com/orgs/${org}/repos?per_page=${perPage}&page=${page}`;
+        try {
+            const response = await axios.get(url, {
+                headers: { Authorization: `token ${token}` }
+            });
+
+            if (response.data.length > 0) {
+                repos = repos.concat(response.data.map(repo => repo.name));
+                page++;
+            } else {
+                hasMore = false;
+            }
+        } catch (error) {
+            console.error(`Erro ao buscar repositórios de ${org}:`, error.response?.data || error.message);
+            return [];
+        }
+    }
+    return repos;
+}
+
+// Busca todas as issues de um repositório específico usando seu token específico
+async function getAllIssues(org, repo, token) {
+    let issues = [];
+    let page = 1;
+    const perPage = 100;
+    let hasMore = true;
+
+    while (hasMore) {
+        const url = `https://api.github.com/repos/${org}/${repo}/issues?per_page=${perPage}&page=${page}`;
+        try {
+            const response = await axios.get(url, {
+                headers: { Authorization: `token ${token}` }
+            });
+
+            if (response.data.length > 0) {
+                issues = issues.concat(response.data.map(issue => ({
+                    org,
+                    repo,
+                    id: issue.id,
+                    title: issue.title,
+                    state: issue.state,
+                    created_at: issue.created_at,
+                    updated_at: issue.updated_at,
+                    url: issue.html_url
+                })));
+                page++;
+            } else {
+                hasMore = false;
+            }
+        } catch (error) {
+            console.error(`Erro ao buscar issues de ${org}/${repo}:`, error.response?.data || error.message);
+            return [];
+        }
+    }
+    return issues;
+}
+
+// Busca todas as issues de múltiplas organizações, cada uma com seu próprio token
+async function getAllIssuesFromOrganizations(orgTokens) {
+    try {
+        // Busca repositórios de cada organização em paralelo
+        const repoRequests = orgTokens.map(({ org, token }) => getRepos(org, token));
+        const reposPerOrg = await Promise.all(repoRequests);
+
+        // Busca issues de cada repositório em paralelo
+        const issueRequests = [];
+        orgTokens.forEach(({ org, token }, index) => {
+            reposPerOrg[index].forEach(repo => {
+                issueRequests.push(getAllIssues(org, repo, token));
+            });
+        });
+
+        // Espera todas as requisições de issues terminarem
+        const issuesPerRepo = await Promise.all(issueRequests);
+
+        // Junta todas as issues em uma única lista
+        return issuesPerRepo.flat();
+    } catch (error) {
+        console.error('Erro ao processar organizações:', error.message);
+        return [];
+    }
+}
+
+module.exports = { getAllIssuesFromOrganizations };

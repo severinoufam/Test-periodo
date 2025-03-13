@@ -1,0 +1,34 @@
+const express = require('express');
+const { getAllIssuesFromOrganizations } = require('./github');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/issues', async (req, res) => {
+    const { orgs, tokens } = req.query;
+
+    if (!orgs || !tokens) {
+        return res.status(400).json({ error: 'Orgs e tokens são obrigatórios' });
+    }
+
+    const orgList = orgs.split(',');
+    const tokenList = tokens.split(',');
+
+    if (orgList.length !== tokenList.length) {
+        return res.status(400).json({ error: 'Cada organização deve ter um token correspondente' });
+    }
+
+    // Cria um array de objetos { org, token }
+    const orgTokens = orgList.map((org, index) => ({ org, token: tokenList[index] }));
+
+    try {
+        const issues = await getAllIssuesFromOrganizations(orgTokens);
+        res.json(issues);
+    } catch (error) {
+        res.status(500).json({ error: 'Erro ao buscar issues' });
+    }
+});
+
+app.listen(PORT, () => {
+    console.log(`Servidor rodando na porta ${PORT}`);
+});
